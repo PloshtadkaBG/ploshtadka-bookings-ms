@@ -51,12 +51,12 @@ Bookings-ms calls venues-ms via `VenuesClient` in `app/deps.py` using the intern
 app/
   settings.py          # DB_URL, USERS_MS_URL, VENUES_MS_URL (env vars)
   models.py            # Tortoise ORM model: Booking + BookingStatus
-  schemas.py           # Pydantic schemas: BookingCreate, BookingStatusUpdate, BookingResponse, BookingFilters
+  schemas.py           # Pydantic schemas: BookingCreate, BookingStatusUpdate, BookingResponse, BookingFilters, BookingSlot
   crud.py              # BookingCRUD — all DB operations (conflict checks, CRUD)
   deps.py              # Auth deps, VenuesClient, scope checkers
   scopes.py            # BookingScope StrEnum + BOOKING_SCOPE_DESCRIPTIONS
   routers/
-    booking.py         # /bookings CRUD + status transitions
+    booking.py         # /bookings CRUD + status transitions + GET /bookings/slots
 tests/
   conftest.py          # Fixtures: customer_client, owner_client, admin_client, anon_app, client_factory
   factories.py         # make_customer(), make_venue_owner(), make_admin(), booking_response(), etc.
@@ -88,6 +88,12 @@ CONFIRMED → NO_SHOW    (venue owner / admin)
 ```
 
 Terminal states: `COMPLETED`, `CANCELLED`, `NO_SHOW` — no further transitions allowed.
+
+## Anonymous slots endpoint
+
+`GET /bookings/slots?venue_id=<uuid>` — returns `[{start_datetime, end_datetime}]` for all PENDING+CONFIRMED bookings at a venue. **No user identity exposed.** Requires any valid auth token (blocks anonymous scraping). Used by the frontend booking grid to show occupied cells without revealing who booked them.
+
+`BookingSlot` schema: only `start_datetime` + `end_datetime`. Define it **before** `/{booking_id}` routes in the router to avoid FastAPI matching "slots" as a UUID path param.
 
 ## Booking model
 
