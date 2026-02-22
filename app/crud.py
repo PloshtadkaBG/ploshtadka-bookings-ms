@@ -8,7 +8,7 @@ from fastapi import HTTPException, status
 from ms_core import CRUD
 
 from app.models import Booking, BookingStatus
-from app.schemas import BookingFilters, BookingResponse, BookingStatusUpdate
+from app.schemas import BookingFilters, BookingResponse, BookingSlot, BookingStatusUpdate
 
 
 def _overlaps_unavailabilities(
@@ -158,6 +158,14 @@ class BookingCRUD(CRUD[Booking, BookingResponse]):  # type: ignore
         inst.status = payload.status  # type: ignore
         await inst.save(update_fields=["status"])
         return BookingResponse.model_validate(inst, from_attributes=True)
+
+    async def list_occupied_slots(self, venue_id: UUID) -> list[BookingSlot]:
+        """Return booked time windows for a venue — no user info exposed."""
+        bookings = await Booking.filter(
+            venue_id=venue_id,
+            status__in=[BookingStatus.PENDING, BookingStatus.CONFIRMED],
+        ).only("start_datetime", "end_datetime")
+        return [BookingSlot.model_validate(b, from_attributes=True) for b in bookings]
 
     async def delete_booking(self, booking_id: UUID) -> bool:
         return await self.delete_by(id=booking_id)

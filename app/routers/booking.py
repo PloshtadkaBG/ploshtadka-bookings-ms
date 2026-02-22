@@ -17,6 +17,7 @@ from app.schemas import (
     BookingCreate,
     BookingFilters,
     BookingResponse,
+    BookingSlot,
     BookingStatus,
     BookingStatusUpdate,
 )
@@ -111,6 +112,18 @@ def _assert_transition(
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+
+@router.get("/slots", response_model=list[BookingSlot])
+async def get_venue_slots(
+    venue_id: UUID,
+    _: CurrentUser = Depends(get_current_user),
+) -> list[BookingSlot]:
+    """
+    Returns occupied time windows for a venue.
+    Any authenticated user can call this — response contains NO user identity.
+    """
+    return await booking_crud.list_occupied_slots(venue_id)
 
 
 @router.get("/", response_model=list[BookingResponse])

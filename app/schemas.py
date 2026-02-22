@@ -53,6 +53,15 @@ class BookingResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class BookingSlot(BaseModel):
+    """Minimal occupied slot — reveals no user identity."""
+
+    start_datetime: datetime
+    end_datetime: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class BookingFilters(BaseModel):
     """Bind to a FastAPI route via Depends(BookingFilters)."""
 
