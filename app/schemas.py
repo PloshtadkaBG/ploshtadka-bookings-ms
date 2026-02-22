@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class BookingStatus(StrEnum):
@@ -20,7 +20,14 @@ class BookingCreate(BaseModel):
     venue_id: UUID
     start_datetime: datetime
     end_datetime: datetime
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("start_datetime", "end_datetime", mode="after")
+    @classmethod
+    def require_timezone(cls, v: datetime) -> datetime:
+        if v.tzinfo is None:
+            raise ValueError("datetime must be timezone-aware (include UTC offset)")
+        return v.astimezone(timezone.utc)
 
     @model_validator(mode="after")
     def validate_time_range(self) -> BookingCreate:

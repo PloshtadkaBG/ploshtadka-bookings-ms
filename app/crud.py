@@ -1,14 +1,22 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import UUID
 
 from fastapi import HTTPException, status
 from ms_core import CRUD
+from tortoise.transactions import in_transaction
 
 from app.models import Booking, BookingStatus
 from app.schemas import BookingFilters, BookingResponse, BookingSlot, BookingStatusUpdate
+
+
+def _to_utc(dt: datetime) -> datetime:
+    """Ensure a datetime is UTC-aware, handling both aware and naive inputs."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 def _overlaps_unavailabilities(
@@ -18,8 +26,8 @@ def _overlaps_unavailabilities(
 ) -> bool:
     """Return True if [start, end) overlaps any unavailability window."""
     for u in unavailabilities:
-        u_start = datetime.fromisoformat(u["start_datetime"])
-        u_end = datetime.fromisoformat(u["end_datetime"])
+        u_start = _to_utc(datetime.fromisoformat(u["start_datetime"]))
+        u_end = _to_utc(datetime.fromisoformat(u["end_datetime"]))
         if start < u_end and end > u_start:
             return True
     return False
@@ -58,15 +66,10 @@ class BookingCRUD(CRUD[Booking, BookingResponse]):  # type: ignore
     ) -> BookingResponse:
         """
         Persist a new booking after validating:
-          - no DB conflict with existing active bookings
+          - no DB conflict with existing active bookings (atomic, locked)
           - no overlap with venue unavailability windows
         """
-        if await self._has_db_conflict(venue_id, start_datetime, end_datetime):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Booking conflicts with an existing booking for this venue",
-            )
-
+        # Check unavailabilities outside the transaction (no DB rows involved)
         if _overlaps_unavailabilities(start_datetime, end_datetime, unavailabilities):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -78,17 +81,31 @@ class BookingCRUD(CRUD[Booking, BookingResponse]):  # type: ignore
         )
         total_price = (price_per_hour * duration_hours).quantize(Decimal("0.01"))
 
-        inst = await Booking.create(
-            venue_id=venue_id,
-            venue_owner_id=venue_owner_id,
-            user_id=user_id,
-            start_datetime=start_datetime,
-            end_datetime=end_datetime,
-            price_per_hour=price_per_hour,
-            total_price=total_price,
-            currency=currency,
-            notes=notes,
-        )
+        # Atomic check-then-insert: SELECT FOR UPDATE prevents double-booking
+        async with in_transaction():
+            if await Booking.filter(
+                venue_id=venue_id,
+                status__in=[BookingStatus.PENDING, BookingStatus.CONFIRMED],
+                start_datetime__lt=end_datetime,
+                end_datetime__gt=start_datetime,
+            ).select_for_update().exists():
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Booking conflicts with an existing booking for this venue",
+                )
+
+            inst = await Booking.create(
+                venue_id=venue_id,
+                venue_owner_id=venue_owner_id,
+                user_id=user_id,
+                start_datetime=start_datetime,
+                end_datetime=end_datetime,
+                price_per_hour=price_per_hour,
+                total_price=total_price,
+                currency=currency,
+                notes=notes,
+            )
+
         return BookingResponse.model_validate(inst, from_attributes=True)
 
     async def get_booking(
@@ -97,12 +114,6 @@ class BookingCRUD(CRUD[Booking, BookingResponse]):  # type: ignore
         user_id: UUID | None = None,
         venue_owner_id: UUID | None = None,
     ) -> BookingResponse | None:
-        """
-        Fetch a booking by id.
-        If user_id is set: only return if booking belongs to that customer.
-        If venue_owner_id is set: only return if booking belongs to that venue owner.
-        If neither is set: admin access — return any booking.
-        """
         if user_id is not None:
             inst = await Booking.get_or_none(id=booking_id, user_id=user_id)
         elif venue_owner_id is not None:
@@ -122,12 +133,6 @@ class BookingCRUD(CRUD[Booking, BookingResponse]):  # type: ignore
         user_id: UUID | None = None,
         venue_owner_id: UUID | None = None,
     ) -> list[BookingResponse]:
-        """
-        List bookings with optional ownership scoping.
-        user_id restricts to customer's bookings.
-        venue_owner_id restricts to bookings at the owner's venues.
-        Neither means admin — returns all bookings.
-        """
         qs = Booking.all()
 
         if user_id is not None:
