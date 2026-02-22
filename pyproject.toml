@@ -1,0 +1,49 @@
+[project]
+name = "ploshtadka-bookings-ms"
+version = "0.1.0"
+description = "Bookings microservice for the PloshtadkaBG platform"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "aerich>=0.8.2",
+    "fastapi[standard]>=0.112.4",
+    "httpx>=0.28",
+    "ms-core",
+    "pydantic>=2.11.7",
+    "tortoise-orm[asyncpg]>=0.21.7",
+]
+
+[dependency-groups]
+dev = [
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "ruff>=0.9",
+    "taskipy>=1.14",
+]
+
+[tool.taskipy.tasks]
+check = "bash scripts/check.sh"
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["B008"]  # Depends() in FastAPI function defaults is intentional
+
+[tool.pytest.ini_options]
+addopts = "-v"
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.pyright]
+reportInvalidTypeForm = "none"
+
+[tool.uv.sources]
+ms-core = { url = "https://github.com/HexChap/MSCore/archive/refs/heads/master.zip" }
+
+[tool.aerich]
+tortoise_orm = "main.tortoise_conf"
+location = "./migrations"
+src_folder = "./."
