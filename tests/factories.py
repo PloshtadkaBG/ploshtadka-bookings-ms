@@ -119,6 +119,20 @@ def venue_dict(**overrides) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def user_dict(user_id: UUID = CUSTOMER_ID, **overrides) -> dict:
+    """Minimal users-ms user representation used by UsersClient mocks."""
+    base = dict(
+        id=str(user_id),
+        username=f"user_{str(user_id)[:8]}",
+        full_name="Test User",
+        email="test@example.com",
+        is_active=True,
+        scopes=[],
+        created_at=NOW.isoformat(),
+    )
+    return {**base, **overrides}
+
+
 def booking_create_payload(**overrides) -> dict:
     base = dict(
         venue_id=str(VENUE_ID),

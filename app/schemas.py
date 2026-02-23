@@ -69,6 +69,16 @@ class BookingSlot(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class BookingEnriched(BookingResponse):
+    """BookingResponse extended with human-readable names from upstream services."""
+
+    venue_name: str | None = None
+    customer_username: str | None = None
+    customer_full_name: str | None = None
+    owner_username: str | None = None
+    owner_full_name: str | None = None
+
+
 class BookingFilters(BaseModel):
     """Bind to a FastAPI route via Depends(BookingFilters)."""
 

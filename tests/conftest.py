@@ -5,6 +5,8 @@ No imports needed in test files — pytest discovers this by convention.
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -14,6 +16,7 @@ from app.deps import (
     can_read_or_manage_booking,
     can_write_booking,
     get_current_user,
+    get_users_client,
     get_venues_client,
 )
 from app.routers.booking import router
@@ -21,17 +24,36 @@ from app.routers.booking import router
 from .factories import make_admin, make_customer, make_venue_owner
 
 # ---------------------------------------------------------------------------
+# Default no-op client mocks — prevent real HTTP calls in tests
+# ---------------------------------------------------------------------------
+
+
+def _noop_venues_client():
+    mock = MagicMock()
+    mock.get_venue = AsyncMock(return_value=None)
+    mock.get_unavailabilities = AsyncMock(return_value=[])
+    mock.list_venues = AsyncMock(return_value=[])
+    return mock
+
+
+def _noop_users_client():
+    mock = MagicMock()
+    mock.list_users = AsyncMock(return_value=[])
+    return mock
+
+
+# ---------------------------------------------------------------------------
 # App builder — used by all client fixtures
 # ---------------------------------------------------------------------------
 
 
-def build_app(current_user, venues_client=None) -> FastAPI:
+def build_app(current_user, venues_client=None, users_client=None) -> FastAPI:
     """
     Fresh FastAPI app with auth/scope dependencies overridden to return
     `current_user` unconditionally.
 
-    Pass `venues_client` to inject a mock VenuesClient for create-booking tests.
-    Tests that need real deps to run (e.g. 403 assertions) should use `anon_app`.
+    Pass `venues_client` / `users_client` to inject custom mocks.
+    Defaults to no-op mocks that return empty lists, avoiding real HTTP calls.
     """
     app = FastAPI()
     app.include_router(router)
@@ -47,8 +69,10 @@ def build_app(current_user, venues_client=None) -> FastAPI:
     ):
         app.dependency_overrides[dep] = _user
 
-    if venues_client is not None:
-        app.dependency_overrides[get_venues_client] = lambda: venues_client
+    vc = venues_client if venues_client is not None else _noop_venues_client()
+    uc = users_client if users_client is not None else _noop_users_client()
+    app.dependency_overrides[get_venues_client] = lambda: vc
+    app.dependency_overrides[get_users_client] = lambda: uc
 
     return app
 
@@ -60,19 +84,16 @@ def build_app(current_user, venues_client=None) -> FastAPI:
 
 @pytest.fixture()
 def customer_client():
-    """TestClient authenticated as a regular customer."""
     return TestClient(build_app(make_customer()), raise_server_exceptions=True)
 
 
 @pytest.fixture()
 def owner_client():
-    """TestClient authenticated as a venue owner."""
     return TestClient(build_app(make_venue_owner()), raise_server_exceptions=True)
 
 
 @pytest.fixture()
 def admin_client():
-    """TestClient authenticated as an admin."""
     return TestClient(build_app(make_admin()), raise_server_exceptions=True)
 
 
@@ -89,18 +110,13 @@ def anon_app():
 
 @pytest.fixture()
 def client_factory():
-    """
-    Callable fixture: call it with any CurrentUser (and optional mock VenuesClient).
-
-    Usage:
-        def test_something(client_factory):
-            client = client_factory(make_customer())
-            resp = client.get("/bookings")
-    """
-
-    def _make(current_user, venues_client=None) -> TestClient:
+    def _make(current_user, venues_client=None, users_client=None) -> TestClient:
         return TestClient(
-            build_app(current_user, venues_client=venues_client),
+            build_app(
+                current_user,
+                venues_client=venues_client,
+                users_client=users_client,
+            ),
             raise_server_exceptions=True,
         )
 

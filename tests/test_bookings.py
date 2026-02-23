@@ -26,6 +26,7 @@ from .factories import (
     booking_response,
     make_customer,
     make_venue_owner,
+    user_dict,
     venue_dict,
 )
 
@@ -419,6 +420,81 @@ class TestUpdateBookingStatus:
             f"/bookings/{BOOKING_ID}/status", json={"status": "flying"}
         )
         assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Enrichment — venue_name / customer_username / owner_username
+# ---------------------------------------------------------------------------
+
+
+class TestEnrichment:
+    def _mock_vc(self, venues: list[dict] | None = None):
+        mock = MagicMock()
+        mock.list_venues = AsyncMock(return_value=venues or [])
+        mock.get_venue = AsyncMock(return_value=None)
+        mock.get_unavailabilities = AsyncMock(return_value=[])
+        return mock
+
+    def _mock_uc(self, users: list[dict] | None = None):
+        mock = MagicMock()
+        mock.list_users = AsyncMock(return_value=users or [])
+        return mock
+
+    def test_list_returns_venue_name(self, client_factory):
+        vc = self._mock_vc([venue_dict(name="My Court")])
+        uc = self._mock_uc()
+        client = client_factory(make_customer(), venues_client=vc, users_client=uc)
+        with patch(CRUD_PATH) as mock_crud:
+            mock_crud.list_bookings = AsyncMock(return_value=[booking_response()])
+            resp = client.get("/bookings")
+        assert resp.status_code == 200
+        assert resp.json()[0]["venue_name"] == "My Court"
+
+    def test_list_returns_customer_username(self, client_factory):
+        vc = self._mock_vc()
+        uc = self._mock_uc(
+            [user_dict(user_id=CUSTOMER_ID, username="johndoe", full_name="John Doe")]
+        )
+        client = client_factory(make_customer(), venues_client=vc, users_client=uc)
+        with patch(CRUD_PATH) as mock_crud:
+            mock_crud.list_bookings = AsyncMock(return_value=[booking_response()])
+            resp = client.get("/bookings")
+        data = resp.json()[0]
+        assert data["customer_username"] == "johndoe"
+        assert data["customer_full_name"] == "John Doe"
+
+    def test_list_returns_owner_username(self, client_factory):
+        vc = self._mock_vc()
+        uc = self._mock_uc(
+            [user_dict(user_id=VENUE_OWNER_ID, username="owner42")]
+        )
+        client = client_factory(make_customer(), venues_client=vc, users_client=uc)
+        with patch(CRUD_PATH) as mock_crud:
+            mock_crud.list_bookings = AsyncMock(return_value=[booking_response()])
+            resp = client.get("/bookings")
+        assert resp.json()[0]["owner_username"] == "owner42"
+
+    def test_enrichment_fields_null_when_upstream_empty(self, client_factory):
+        client = client_factory(make_customer())  # uses noop mocks → empty lists
+        with patch(CRUD_PATH) as mock_crud:
+            mock_crud.list_bookings = AsyncMock(return_value=[booking_response()])
+            resp = client.get("/bookings")
+        data = resp.json()[0]
+        assert data["venue_name"] is None
+        assert data["customer_username"] is None
+        assert data["owner_username"] is None
+
+    def test_get_booking_returns_enriched(self, client_factory):
+        vc = self._mock_vc([venue_dict(name="Stadium A")])
+        uc = self._mock_uc([user_dict(user_id=CUSTOMER_ID, username="alice")])
+        client = client_factory(make_customer(), venues_client=vc, users_client=uc)
+        with patch(CRUD_PATH) as mock_crud:
+            mock_crud.get_booking = AsyncMock(return_value=booking_response())
+            resp = client.get(f"/bookings/{BOOKING_ID}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["venue_name"] == "Stadium A"
+        assert data["customer_username"] == "alice"
 
 
 # ---------------------------------------------------------------------------

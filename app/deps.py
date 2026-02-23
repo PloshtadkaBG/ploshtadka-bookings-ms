@@ -179,9 +179,67 @@ class VenuesClient:
             )
         return resp.json()
 
+    async def list_venues(self, user: CurrentUser) -> list[dict]:
+        """Returns all venue list items for name enrichment. Fails silently."""
+        try:
+            resp = await self._client.get("/venues", headers=self._headers(user))
+            if resp.status_code >= 400:
+                return []
+            return resp.json()
+        except httpx.RequestError:
+            return []
+
 
 _venues_client = VenuesClient()
 
 
 def get_venues_client() -> VenuesClient:
     return _venues_client
+
+
+# ---------------------------------------------------------------------------
+# UsersClient — thin async wrapper around users-ms internal API
+# ---------------------------------------------------------------------------
+
+
+@lru_cache(maxsize=1)
+def _get_users_http_client() -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        base_url=settings.users_ms_url,
+        timeout=httpx.Timeout(5.0),
+    )
+
+
+class UsersClient:
+    """
+    Thin async wrapper around the users-ms internal API.
+    Forwards Traefik-injected user headers so users-ms auth deps work normally.
+    """
+
+    @property
+    def _client(self) -> httpx.AsyncClient:
+        return _get_users_http_client()
+
+    def _headers(self, user: CurrentUser) -> dict[str, str]:
+        return {
+            "X-User-Id": str(user.id),
+            "X-Username": user.username,
+            "X-User-Scopes": " ".join(user.scopes),
+        }
+
+    async def list_users(self, user: CurrentUser) -> list[dict]:
+        """Returns all users for name enrichment. Fails silently."""
+        try:
+            resp = await self._client.get("/users", headers=self._headers(user))
+            if resp.status_code >= 400:
+                return []
+            return resp.json()
+        except httpx.RequestError:
+            return []
+
+
+_users_client = UsersClient()
+
+
+def get_users_client() -> UsersClient:
+    return _users_client

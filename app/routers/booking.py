@@ -1,3 +1,4 @@
+import asyncio
 from decimal import Decimal
 from uuid import UUID
 
@@ -6,15 +7,18 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.crud import booking_crud
 from app.deps import (
     CurrentUser,
+    UsersClient,
     VenuesClient,
     can_admin_delete_booking,
     can_read_or_manage_booking,
     can_write_booking,
     get_current_user,
+    get_users_client,
     get_venues_client,
 )
 from app.schemas import (
     BookingCreate,
+    BookingEnriched,
     BookingFilters,
     BookingResponse,
     BookingSlot,
@@ -24,6 +28,57 @@ from app.schemas import (
 from app.scopes import BookingScope
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
+
+
+# ---------------------------------------------------------------------------
+# Enrichment helper
+# ---------------------------------------------------------------------------
+
+
+async def _enrich(
+    bookings: list,
+    current_user: CurrentUser,
+    venues_client: VenuesClient,
+    users_client: UsersClient,
+) -> list[BookingEnriched]:
+    """
+    Convert a list of raw booking objects into BookingEnriched by fetching
+    venue names and user names from upstream services in parallel.
+    Both upstream calls degrade gracefully — enriched fields become None on error.
+    """
+    if not bookings:
+        return []
+
+    parsed = [
+        BookingResponse.model_validate(b, from_attributes=True) for b in bookings
+    ]
+
+    venues_raw, users_raw = await asyncio.gather(
+        venues_client.list_venues(current_user),
+        users_client.list_users(current_user),
+    )
+
+    venue_map: dict[str, str | None] = {v["id"]: v.get("name") for v in venues_raw}
+    user_map: dict[str, dict] = {
+        u["id"]: {"username": u.get("username"), "full_name": u.get("full_name")}
+        for u in users_raw
+    }
+
+    result = []
+    for b in parsed:
+        customer = user_map.get(str(b.user_id), {})
+        owner = user_map.get(str(b.venue_owner_id), {})
+        result.append(
+            BookingEnriched(
+                **b.model_dump(),
+                venue_name=venue_map.get(str(b.venue_id)),
+                customer_username=customer.get("username"),
+                customer_full_name=customer.get("full_name"),
+                owner_username=owner.get("username"),
+                owner_full_name=owner.get("full_name"),
+            )
+        )
+    return result
 
 # ---------------------------------------------------------------------------
 # Transition guard helpers
@@ -129,11 +184,13 @@ async def get_venue_slots(
     return await booking_crud.list_occupied_slots(venue_id)
 
 
-@router.get("/", response_model=list[BookingResponse])
+@router.get("/", response_model=list[BookingEnriched])
 async def list_bookings(
     filters: BookingFilters = Depends(),
     current_user: CurrentUser = Depends(can_read_or_manage_booking),
-) -> list[BookingResponse]:
+    venues_client: VenuesClient = Depends(get_venues_client),
+    users_client: UsersClient = Depends(get_users_client),
+) -> list[BookingEnriched]:
     is_admin = (
         BookingScope.ADMIN in current_user.scopes
         or BookingScope.ADMIN_READ in current_user.scopes
@@ -142,14 +199,17 @@ async def list_bookings(
     is_reader = BookingScope.READ in current_user.scopes
 
     if is_admin:
-        return await booking_crud.list_bookings(filters=filters)
-    if is_manager and not is_reader:
-        # Venue owner: see bookings for their venues
-        return await booking_crud.list_bookings(
+        bookings = await booking_crud.list_bookings(filters=filters)
+    elif is_manager and not is_reader:
+        bookings = await booking_crud.list_bookings(
             filters=filters, venue_owner_id=current_user.id
         )
-    # Customer: see own bookings
-    return await booking_crud.list_bookings(filters=filters, user_id=current_user.id)
+    else:
+        bookings = await booking_crud.list_bookings(
+            filters=filters, user_id=current_user.id
+        )
+
+    return await _enrich(bookings, current_user, venues_client, users_client)
 
 
 @router.post("/", response_model=BookingResponse, status_code=status.HTTP_201_CREATED)
@@ -191,11 +251,13 @@ async def create_booking(
     )
 
 
-@router.get("/{booking_id}", response_model=BookingResponse)
+@router.get("/{booking_id}", response_model=BookingEnriched)
 async def get_booking(
     booking_id: UUID,
     current_user: CurrentUser = Depends(can_read_or_manage_booking),
-) -> BookingResponse:
+    venues_client: VenuesClient = Depends(get_venues_client),
+    users_client: UsersClient = Depends(get_users_client),
+) -> BookingEnriched:
     is_admin = (
         BookingScope.ADMIN in current_user.scopes
         or BookingScope.ADMIN_READ in current_user.scopes
@@ -216,7 +278,9 @@ async def get_booking(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found"
         )
-    return booking
+
+    results = await _enrich([booking], current_user, venues_client, users_client)
+    return results[0]
 
 
 @router.patch("/{booking_id}/status", response_model=BookingResponse)
