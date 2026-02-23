@@ -32,13 +32,13 @@ def _noop_venues_client():
     mock = MagicMock()
     mock.get_venue = AsyncMock(return_value=None)
     mock.get_unavailabilities = AsyncMock(return_value=[])
-    mock.list_venues = AsyncMock(return_value=[])
+    mock.get_by_ids = AsyncMock(return_value=[])
     return mock
 
 
 def _noop_users_client():
     mock = MagicMock()
-    mock.list_users = AsyncMock(return_value=[])
+    mock.get_by_ids = AsyncMock(return_value=[])
     return mock
 
 

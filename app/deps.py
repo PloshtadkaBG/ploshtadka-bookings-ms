@@ -180,10 +180,15 @@ class VenuesClient:
             )
         return resp.json()
 
-    async def list_venues(self, user: CurrentUser) -> list[dict]:
-        """Returns all venue list items for name enrichment. Fails silently."""
+    async def get_by_ids(self, venue_ids: set[UUID], user: CurrentUser) -> list[dict]:
+        """Bulk-fetch venue list items by ID for name enrichment. Fails silently."""
+        if not venue_ids:
+            return []
         try:
-            resp = await self._client.get("/venues", headers=self._headers(user))
+            params = [("ids", str(vid)) for vid in venue_ids]
+            resp = await self._client.get(
+                "/venues/bulk", params=params, headers=self._headers(user)
+            )
             if resp.status_code >= 400 or not resp.content:
                 return []
             return resp.json()
@@ -229,10 +234,15 @@ class UsersClient:
             "X-User-Scopes": " ".join(user.scopes),
         }
 
-    async def list_users(self, user: CurrentUser) -> list[dict]:
-        """Returns all users for name enrichment. Fails silently."""
+    async def get_by_ids(self, user_ids: set[UUID], user: CurrentUser) -> list[dict]:
+        """Bulk-fetch users by ID for name enrichment. Fails silently."""
+        if not user_ids:
+            return []
         try:
-            resp = await self._client.get("/users", headers=self._headers(user))
+            params = [("ids", str(uid)) for uid in user_ids]
+            resp = await self._client.get(
+                "/users/bulk", params=params, headers=self._headers(user)
+            )
             if resp.status_code >= 400 or not resp.content:
                 return []
             return resp.json()

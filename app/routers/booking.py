@@ -53,9 +53,12 @@ async def _enrich(
         BookingResponse.model_validate(b, from_attributes=True) for b in bookings
     ]
 
+    venue_ids = {b.venue_id for b in parsed}
+    user_ids = {b.user_id for b in parsed} | {b.venue_owner_id for b in parsed}
+
     venues_raw, users_raw = await asyncio.gather(
-        venues_client.list_venues(current_user),
-        users_client.list_users(current_user),
+        venues_client.get_by_ids(venue_ids, current_user),
+        users_client.get_by_ids(user_ids, current_user),
     )
 
     venue_map: dict[str, str | None] = {v["id"]: v.get("name") for v in venues_raw}

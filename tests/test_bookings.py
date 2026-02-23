@@ -430,14 +430,14 @@ class TestUpdateBookingStatus:
 class TestEnrichment:
     def _mock_vc(self, venues: list[dict] | None = None):
         mock = MagicMock()
-        mock.list_venues = AsyncMock(return_value=venues or [])
+        mock.get_by_ids = AsyncMock(return_value=venues or [])
         mock.get_venue = AsyncMock(return_value=None)
         mock.get_unavailabilities = AsyncMock(return_value=[])
         return mock
 
     def _mock_uc(self, users: list[dict] | None = None):
         mock = MagicMock()
-        mock.list_users = AsyncMock(return_value=users or [])
+        mock.get_by_ids = AsyncMock(return_value=users or [])
         return mock
 
     def test_list_returns_venue_name(self, client_factory):
