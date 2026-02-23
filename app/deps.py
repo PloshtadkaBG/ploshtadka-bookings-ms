@@ -131,6 +131,7 @@ def _get_venues_http_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(
         base_url=settings.venues_ms_url,
         timeout=httpx.Timeout(5.0),
+        follow_redirects=True,
     )
 
 
@@ -207,6 +208,7 @@ def _get_users_http_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(
         base_url=settings.users_ms_url,
         timeout=httpx.Timeout(5.0),
+        follow_redirects=True,
     )
 
 
