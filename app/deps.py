@@ -183,10 +183,10 @@ class VenuesClient:
         """Returns all venue list items for name enrichment. Fails silently."""
         try:
             resp = await self._client.get("/venues", headers=self._headers(user))
-            if resp.status_code >= 400:
+            if resp.status_code >= 400 or not resp.content:
                 return []
             return resp.json()
-        except httpx.RequestError:
+        except (httpx.RequestError, ValueError):
             return []
 
 
@@ -231,10 +231,10 @@ class UsersClient:
         """Returns all users for name enrichment. Fails silently."""
         try:
             resp = await self._client.get("/users", headers=self._headers(user))
-            if resp.status_code >= 400:
+            if resp.status_code >= 400 or not resp.content:
                 return []
             return resp.json()
-        except httpx.RequestError:
+        except (httpx.RequestError, ValueError):
             return []
 
 
