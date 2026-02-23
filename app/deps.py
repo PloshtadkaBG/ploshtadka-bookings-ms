@@ -9,6 +9,10 @@ from fastapi.security import OAuth2PasswordBearer
 from app import settings
 from app.scopes import BOOKING_SCOPE_DESCRIPTIONS, BookingScope
 
+# ---------------------------------------------------------------------------
+# PaymentsClient — thin async wrapper around payments-ms internal API
+# ---------------------------------------------------------------------------
+
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl=f"{settings.users_ms_url}/auth/token",
     scopes={
@@ -255,3 +259,59 @@ _users_client = UsersClient()
 
 def get_users_client() -> UsersClient:
     return _users_client
+
+
+# ---------------------------------------------------------------------------
+# PaymentsClient — thin async wrapper around payments-ms internal API
+# ---------------------------------------------------------------------------
+
+
+@lru_cache(maxsize=1)
+def _get_payments_http_client() -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        base_url=settings.payments_ms_url,
+        timeout=httpx.Timeout(5.0),
+        follow_redirects=True,
+    )
+
+
+class PaymentsClient:
+    """
+    Thin async wrapper around payments-ms internal API.
+    Called by bookings-ms when a venue owner cancels a booking so that
+    payments-ms can issue the corresponding Stripe refund.
+    Forwards the caller's headers so payments-ms auth works normally.
+    Failures are swallowed — refund failure must not block the cancellation.
+    """
+
+    @property
+    def _client(self) -> httpx.AsyncClient:
+        return _get_payments_http_client()
+
+    def _headers(self, user: CurrentUser) -> dict[str, str]:
+        return {
+            "X-User-Id": str(user.id),
+            "X-Username": user.username,
+            "X-User-Scopes": " ".join(user.scopes),
+        }
+
+    async def refund_booking(self, booking_id: UUID, caller: CurrentUser) -> bool:
+        """
+        Request a refund for a booking's payment.
+        Returns True on success, False on any error (silently degraded).
+        """
+        try:
+            resp = await self._client.post(
+                f"/payments/booking/{booking_id}/refund",
+                headers=self._headers(caller),
+            )
+            return resp.status_code < 400
+        except (httpx.RequestError, Exception):
+            return False
+
+
+_payments_client = PaymentsClient()
+
+
+def get_payments_client() -> PaymentsClient:
+    return _payments_client

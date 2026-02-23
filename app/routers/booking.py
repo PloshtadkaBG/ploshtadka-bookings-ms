@@ -7,12 +7,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.crud import booking_crud
 from app.deps import (
     CurrentUser,
+    PaymentsClient,
     UsersClient,
     VenuesClient,
     can_admin_delete_booking,
     can_read_or_manage_booking,
     can_write_booking,
     get_current_user,
+    get_payments_client,
     get_users_client,
     get_venues_client,
 )
@@ -291,6 +293,7 @@ async def update_booking_status(
     booking_id: UUID,
     payload: BookingStatusUpdate,
     current_user: CurrentUser = Depends(get_current_user),
+    payments_client: PaymentsClient = Depends(get_payments_client),
 ) -> BookingResponse:
     # Fetch the booking without ownership filter — we validate permissions manually
     booking = await booking_crud.get_booking(booking_id)
@@ -312,6 +315,19 @@ async def update_booking_status(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found"
         )
+
+    # Trigger Stripe refund when the venue owner (or admin) cancels a paid booking.
+    # Customer cancellations do NOT refund — per the no-refund policy for customers.
+    # Failure to refund does not block the cancellation response.
+    if payload.status == BookingStatus.CANCELLED:
+        is_admin = (
+            BookingScope.ADMIN in current_user.scopes
+            or BookingScope.ADMIN_WRITE in current_user.scopes
+        )
+        is_venue_owner = current_user.id == booking.venue_owner_id
+        if is_admin or is_venue_owner:
+            await payments_client.refund_booking(booking_id, current_user)
+
     return updated
 
 

@@ -16,6 +16,7 @@ from app.deps import (
     can_read_or_manage_booking,
     can_write_booking,
     get_current_user,
+    get_payments_client,
     get_users_client,
     get_venues_client,
 )
@@ -42,12 +43,18 @@ def _noop_users_client():
     return mock
 
 
+def _noop_payments_client():
+    mock = MagicMock()
+    mock.refund_booking = AsyncMock(return_value=True)
+    return mock
+
+
 # ---------------------------------------------------------------------------
 # App builder — used by all client fixtures
 # ---------------------------------------------------------------------------
 
 
-def build_app(current_user, venues_client=None, users_client=None) -> FastAPI:
+def build_app(current_user, venues_client=None, users_client=None, payments_client=None) -> FastAPI:
     """
     Fresh FastAPI app with auth/scope dependencies overridden to return
     `current_user` unconditionally.
@@ -71,8 +78,10 @@ def build_app(current_user, venues_client=None, users_client=None) -> FastAPI:
 
     vc = venues_client if venues_client is not None else _noop_venues_client()
     uc = users_client if users_client is not None else _noop_users_client()
+    pc = payments_client if payments_client is not None else _noop_payments_client()
     app.dependency_overrides[get_venues_client] = lambda: vc
     app.dependency_overrides[get_users_client] = lambda: uc
+    app.dependency_overrides[get_payments_client] = lambda: pc
 
     return app
 
@@ -110,12 +119,18 @@ def anon_app():
 
 @pytest.fixture()
 def client_factory():
-    def _make(current_user, venues_client=None, users_client=None) -> TestClient:
+    def _make(
+        current_user,
+        venues_client=None,
+        users_client=None,
+        payments_client=None,
+    ) -> TestClient:
         return TestClient(
             build_app(
                 current_user,
                 venues_client=venues_client,
                 users_client=users_client,
+                payments_client=payments_client,
             ),
             raise_server_exceptions=True,
         )
