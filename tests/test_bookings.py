@@ -310,16 +310,37 @@ class TestUpdateBookingStatus:
             )
         assert resp.status_code == 200
 
-    def test_venue_owner_cannot_cancel_returns_403(self, client_factory):
-        """Venue owner cannot cancel (that's the customer's right)."""
+    def test_venue_owner_can_refuse_pending_booking(self, client_factory):
+        """Venue owner can cancel (refuse) a pending booking for their own venue."""
         from uuid import uuid4
 
-        other_customer_id = uuid4()
         client = client_factory(make_venue_owner())
         pending = booking_model(
             status="pending",
-            user_id=str(other_customer_id),
+            user_id=str(uuid4()),
             venue_owner_id=str(VENUE_OWNER_ID),
+        )
+        cancelled = booking_response(status="cancelled")
+        with patch(CRUD_PATH) as mock_crud:
+            mock_crud.get_booking = AsyncMock(return_value=pending)
+            mock_crud.update_booking_status = AsyncMock(return_value=cancelled)
+            resp = client.patch(
+                f"/bookings/{BOOKING_ID}/status", json={"status": "cancelled"}
+            )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "cancelled"
+
+    def test_venue_owner_cannot_cancel_other_venues_booking_returns_403(
+        self, client_factory
+    ):
+        """Venue owner cannot cancel a booking belonging to a different venue."""
+        from uuid import uuid4
+
+        client = client_factory(make_venue_owner())
+        pending = booking_model(
+            status="pending",
+            user_id=str(uuid4()),
+            venue_owner_id=str(uuid4()),  # different owner
         )
         with patch(CRUD_PATH) as mock_crud:
             mock_crud.get_booking = AsyncMock(return_value=pending)

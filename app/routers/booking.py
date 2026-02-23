@@ -62,9 +62,9 @@ def _assert_transition(
 
     Rules:
       pending  → confirmed  : MANAGE + venue owner, OR admin
-      pending  → cancelled  : CANCEL + booker,       OR admin
+      pending  → cancelled  : CANCEL + booker, OR MANAGE + venue owner, OR admin
       confirmed → completed  : MANAGE + venue owner, OR admin
-      confirmed → cancelled  : CANCEL + booker,       OR admin
+      confirmed → cancelled  : CANCEL + booker, OR MANAGE + venue owner, OR admin
       confirmed → no_show    : MANAGE + venue owner, OR admin
     """
     if new_status not in _VALID_TRANSITIONS.get(old_status, set()):
@@ -84,9 +84,10 @@ def _assert_transition(
     if is_admin:
         return
 
+    is_venue_owner = current_user.id == booking_venue_owner_id
+    has_manage = BookingScope.MANAGE in current_user.scopes
+
     if new_status in _MANAGE_STATUSES:
-        is_venue_owner = current_user.id == booking_venue_owner_id
-        has_manage = BookingScope.MANAGE in current_user.scopes
         if not (has_manage and is_venue_owner):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -99,12 +100,14 @@ def _assert_transition(
     elif new_status in _CANCEL_STATUSES:
         is_booker = current_user.id == booking_user_id
         has_cancel = BookingScope.CANCEL in current_user.scopes
-        if not (has_cancel and is_booker):
+        # Either the customer cancels their own booking, or the venue owner refuses it
+        if not ((has_cancel and is_booker) or (has_manage and is_venue_owner)):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=(
                     f"Transitioning to '{new_status}' requires "
-                    f"'{BookingScope.CANCEL}' scope and being the booking owner."
+                    f"'{BookingScope.CANCEL}' scope as the booking owner, "
+                    f"or '{BookingScope.MANAGE}' scope as the venue owner."
                 ),
             )
 
