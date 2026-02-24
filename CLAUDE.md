@@ -45,6 +45,8 @@ Bookings-ms calls venues-ms via `VenuesClient` in `app/deps.py` using the intern
 
 `VenuesClient` is injected as a FastAPI dependency via `get_venues_client()`. Override this in tests to mock HTTP calls.
 
+It also calls payments-ms via `PaymentsClient` in `app/deps.py` (`http://payments-ms:8003`) to issue refunds when a venue owner cancels a confirmed booking (`refund_booking(booking_id)`).
+
 ## Project structure
 
 ```
@@ -132,3 +134,4 @@ uv run aerich upgrade
 | `DB_URL`        | `sqlite://:memory:`       | Database connection string         |
 | `USERS_MS_URL`  | `http://localhost:8000`   | Users microservice base URL        |
 | `VENUES_MS_URL` | `http://localhost:8001`   | Venues microservice base URL       |
+| `PAYMENTS_MS_URL` | `http://localhost:8003` | Payments microservice base URL     |
