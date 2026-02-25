@@ -10,9 +10,7 @@ from app.settings import db_url
 
 setup_logging()
 
-application = FastAPI(
-    title="ploshtadka-bookings-ms",
-)
+application = FastAPI(title="ploshtadka-bookings-ms", redirect_slashes=False)
 
 application.add_middleware(
     CORSMiddleware,
