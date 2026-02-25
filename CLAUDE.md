@@ -116,6 +116,11 @@ with patch("app.routers.booking.booking_crud") as mock_crud:
 assert resp.status_code == 200
 ```
 
+## Redis cache (`app/cache.py`)
+- Caches `GET /bookings/slots` keyed by `slots:{venue_id}`, TTL 60s
+- Invalidated in `create_booking` and `update_booking_status` for the affected venue
+- All Redis ops silently degrade on failure
+
 ## Database
 
 - Tests: SQLite in-memory (default, mocked via CRUD patch)
