@@ -5,7 +5,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from ms_core import setup_app
 
+from app.logging import setup_logging
 from app.settings import db_url
+
+setup_logging()
 
 application = FastAPI(
     title="ploshtadka-bookings-ms",
