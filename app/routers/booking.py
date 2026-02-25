@@ -3,6 +3,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from loguru import logger
 
 from app.cache import get_slots_cache, invalidate_slots_cache, set_slots_cache
 from app.crud import booking_crud
@@ -52,9 +53,7 @@ async def _enrich(
     if not bookings:
         return []
 
-    parsed = [
-        BookingResponse.model_validate(b, from_attributes=True) for b in bookings
-    ]
+    parsed = [BookingResponse.model_validate(b, from_attributes=True) for b in bookings]
 
     venue_ids = {b.venue_id for b in parsed}
     user_ids = {b.user_id for b in parsed} | {b.venue_owner_id for b in parsed}
@@ -85,6 +84,7 @@ async def _enrich(
             )
         )
     return result
+
 
 # ---------------------------------------------------------------------------
 # Transition guard helpers
