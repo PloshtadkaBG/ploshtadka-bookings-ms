@@ -23,7 +23,10 @@ class _InterceptHandler(logging.Handler):
         )
 
 
-def setup_logging(level: str = "INFO") -> None:
+def setup_logging(level: str | None = None) -> None:
+    import os
+
+    level = level or os.environ.get("LOG_LEVEL", "INFO")
     logger.remove()
     logger.add(
         sys.stdout,
