@@ -4,6 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.cache import get_slots_cache, invalidate_slots_cache, set_slots_cache
 from app.crud import booking_crud
 from app.deps import (
     CurrentUser,
@@ -186,7 +187,15 @@ async def get_venue_slots(
     Returns occupied time windows for a venue.
     Any authenticated user can call this — response contains NO user identity.
     """
-    return await booking_crud.list_occupied_slots(venue_id)
+    cached = await get_slots_cache(venue_id)
+    if cached is not None:
+        logger.debug("Cache hit for slots: venue_id={}", venue_id)
+        return [BookingSlot(**s) for s in cached]
+
+    logger.debug("Cache miss for slots: venue_id={}", venue_id)
+    slots = await booking_crud.list_occupied_slots(venue_id)
+    await set_slots_cache(venue_id, [s.model_dump(mode="json") for s in slots])
+    return slots
 
 
 @router.get("/", response_model=list[BookingEnriched])
@@ -243,7 +252,7 @@ async def create_booking(
         payload.venue_id, current_user
     )
 
-    return await booking_crud.create_booking(
+    booking = await booking_crud.create_booking(
         venue_id=payload.venue_id,
         venue_owner_id=UUID(venue["owner_id"]),
         user_id=current_user.id,
@@ -254,6 +263,8 @@ async def create_booking(
         notes=payload.notes,
         unavailabilities=unavailabilities,
     )
+    await invalidate_slots_cache(payload.venue_id)
+    return booking
 
 
 @router.get("/{booking_id}", response_model=BookingEnriched)
@@ -315,6 +326,8 @@ async def update_booking_status(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found"
         )
+
+    await invalidate_slots_cache(booking.venue_id)
 
     # Trigger Stripe refund when the venue owner (or admin) cancels a paid booking.
     # Customer cancellations do NOT refund — per the no-refund policy for customers.

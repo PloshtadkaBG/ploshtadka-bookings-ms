@@ -11,6 +11,7 @@ dependencies = [
     "loguru>=0.7.3",
     "ms-core",
     "pydantic>=2.11.7",
+    "redis>=7.2.0",
     "tortoise-orm[asyncpg]>=0.21.7",
 ]
 
