@@ -140,3 +140,4 @@ uv run aerich upgrade
 | `USERS_MS_URL`  | `http://localhost:8000`   | Users microservice base URL        |
 | `VENUES_MS_URL` | `http://localhost:8001`   | Venues microservice base URL       |
 | `PAYMENTS_MS_URL` | `http://localhost:8003` | Payments microservice base URL     |
+| `REDIS_URL`       | `redis://localhost:6379/0` | Redis connection string (cache)  |

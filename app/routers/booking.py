@@ -214,7 +214,9 @@ async def list_bookings(
 
     if is_admin:
         bookings = await booking_crud.list_bookings(filters=filters)
-    elif is_manager and not is_reader:
+    elif is_manager:
+        # Venue owners see bookings for their venues regardless of also having
+        # bookings:read (which DEFAULT_OWNER_SCOPES includes for customer use)
         bookings = await booking_crud.list_bookings(
             filters=filters, venue_owner_id=current_user.id
         )
@@ -283,7 +285,7 @@ async def get_booking(
 
     if is_admin:
         booking = await booking_crud.get_booking(booking_id)
-    elif is_manager and not is_reader:
+    elif is_manager:
         booking = await booking_crud.get_booking(
             booking_id, venue_owner_id=current_user.id
         )
