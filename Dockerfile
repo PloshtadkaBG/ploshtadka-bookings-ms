@@ -36,5 +36,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Expose default FastAPI port
 EXPOSE 8002
 
-# Start the API (suitable for docker compose `command:` override if needed)
-CMD ["uv", "run", "uvicorn", "main:application", "--host", "0.0.0.0", "--port", "8002"]
+ENV UVICORN_PORT=8002
+
+COPY entrypoint.sh .
+RUN chmod +x entrypoint.sh
+
+ENTRYPOINT ["./entrypoint.sh"]
